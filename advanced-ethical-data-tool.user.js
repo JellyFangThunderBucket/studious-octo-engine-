@@ -1,8 +1,8 @@
 // ==UserScript==
 // @name         Advanced Ethical Research Assistant v4.0
 // @namespace    https://littlelooney.example/research-assistant
-// @version      2026-05-07
-// @description  Modern, responsive research helper for consent-based data collection: visible-page extraction, media inventory, metadata, OCR, exports, privacy redaction, and performance-safe live updates.
+// @version      2026-05-29
+// @description  Modern, responsive research helper for consent-based data collection: visible-page extraction, media/stream radar, metadata, OCR, exports, privacy redaction, and performance-safe live updates.
 // @author       LittleLooney + OpenAI
 // @license      Copyright (C) Littlelooney All rights reserved.
 // @match        *://*/*
@@ -27,6 +27,9 @@
   const STORAGE_KEY = 'aera:v4:settings';
   const LOG_LIMIT = 250;
   const OCR_SRC = 'https://cdn.jsdelivr.net/npm/tesseract.js@5/dist/tesseract.min.js';
+  const STREAM_URL_RE = /(?:\.m3u8|\.mpd)(?:$|[?#])/i;
+  const DIRECT_VIDEO_RE = /\.(?:mp4|webm|mov|m4v|ts)(?:$|[?#])/i;
+  const MAX_SNIFFED_STREAMS = 200;
   const DEFAULT_SETTINGS = Object.freeze({
     autoScan: true,
     includeShadowDom: false,
@@ -35,6 +38,9 @@
     compactMode: false,
     theme: 'dark',
     scanSelectionOnly: false,
+    streamRadar: true,
+    networkSniffer: true,
+    includePerformanceEntries: true,
   });
 
   const state = {
@@ -45,6 +51,10 @@
     scanController: null,
     isScanning: false,
     isPaused: false,
+    discoveredStreams: new Map(),
+    fetchPatched: false,
+    xhrPatched: false,
+    responseTextPatched: false,
   };
 
   const idle = window.requestIdleCallback
@@ -68,12 +78,14 @@
       url: location.href,
       title: document.title,
       capturedAt: new Date().toISOString(),
-      counts: { textBlocks: 0, links: 0, images: 0, videos: 0, documents: 0, meta: 0, backgroundImages: 0 },
+      counts: { textBlocks: 0, links: 0, images: 0, videos: 0, streams: 0, documents: 0, meta: 0, backgroundImages: 0 },
+      pageBrief: {},
       textBlocks: [],
       links: [],
       images: [],
       videos: [],
       documents: [],
+      streams: [],
       meta: {},
       backgroundImages: [],
       headings: [],
@@ -173,6 +185,8 @@
       snapshot.images = extractImages(root);
       snapshot.videos = extractVideos(root);
       snapshot.documents = snapshot.links.filter((link) => /\.(?:pdf|docx?|xlsx?|pptx?|csv|json|xml)(?:$|[?#])/i.test(link.href));
+      snapshot.streams = state.settings.streamRadar ? extractStreams(root) : [];
+      snapshot.pageBrief = createPageBrief(snapshot);
       snapshot.meta = extractMeta();
       snapshot.backgroundImages = extractBackgroundImages(root);
       snapshot.tables = extractTables(root);
@@ -183,6 +197,7 @@
         links: snapshot.links.length,
         images: snapshot.images.length,
         videos: snapshot.videos.length,
+        streams: snapshot.streams.length,
         documents: snapshot.documents.length,
         meta: Object.keys(snapshot.meta).length,
         backgroundImages: snapshot.backgroundImages.length,
@@ -267,6 +282,70 @@
       videos.push({ type: tag, src: absoluteUrl(src), title: redactSensitiveText(el.title || el.getAttribute('aria-label') || '') });
     });
     return uniqueBy(videos.filter((video) => video.src), (video) => video.src);
+  }
+
+  function classifyStreamUrl(url) {
+    if (/\.m3u8(?:$|[?#])/i.test(url)) return 'HLS playlist';
+    if (/\.mpd(?:$|[?#])/i.test(url)) return 'DASH manifest';
+    if (/\.ts(?:$|[?#])/i.test(url)) return 'Transport stream segment';
+    if (DIRECT_VIDEO_RE.test(url)) return 'Direct video';
+    return 'Media candidate';
+  }
+
+  function rememberStream(url, source = 'unknown', context = {}) {
+    if (!state.settings.streamRadar) return;
+    const href = absoluteUrl(url);
+    if (!href || (!STREAM_URL_RE.test(href) && !DIRECT_VIDEO_RE.test(href))) return;
+    const existing = state.discoveredStreams.get(href) || {};
+    state.discoveredStreams.set(href, {
+      url: href,
+      type: classifyStreamUrl(href),
+      sources: [...new Set([...(existing.sources || []), source])],
+      firstSeen: existing.firstSeen || new Date().toISOString(),
+      lastSeen: new Date().toISOString(),
+      context: { ...(existing.context || {}), ...context },
+    });
+    if (state.discoveredStreams.size > MAX_SNIFFED_STREAMS) {
+      const oldest = state.discoveredStreams.keys().next().value;
+      state.discoveredStreams.delete(oldest);
+    }
+  }
+
+  function findUrlLikeValues(value) {
+    return String(value || '').match(/https?:\/\/[^\s"'<>]+?(?:\.m3u8|\.mpd|\.mp4|\.webm|\.m4v|\.mov|\.ts)(?:[?#][^\s"'<>]*)?/gi) || [];
+  }
+
+  function summarizeM3u8(content) {
+    if (!/^#EXTM3U/m.test(content || '')) return {};
+    const duration = Array.from(content.matchAll(/^#EXTINF:([\d.]+)/gm)).reduce((sum, match) => sum + Number(match[1] || 0), 0);
+    const variants = (content.match(/^#EXT-X-STREAM-INF:/gm) || []).length;
+    const segments = (content.match(/^#EXTINF:/gm) || []).length;
+    const encrypted = /^#EXT-X-KEY:/m.test(content);
+    return { manifest: 'HLS', variants, segments, durationSeconds: Math.round(duration), encrypted };
+  }
+
+  function extractStreams(root) {
+    root.querySelectorAll('video, audio, source, track, iframe, embed, object, a').forEach((el) => {
+      if (!isVisible(el) && !['SOURCE', 'TRACK'].includes(el.tagName)) return;
+      ['src', 'href', 'data-src', 'data-url', 'data-video', 'poster'].forEach((attr) => rememberStream(el.getAttribute(attr), `dom:${el.tagName.toLowerCase()}`));
+      Array.from(el.attributes || []).forEach((attr) => findUrlLikeValues(attr.value).forEach((url) => rememberStream(url, `attr:${attr.name}`)));
+    });
+    if (state.settings.includePerformanceEntries && performance.getEntriesByType) {
+      performance.getEntriesByType('resource').forEach((entry) => rememberStream(entry.name, 'performance', { initiatorType: entry.initiatorType }));
+    }
+    return Array.from(state.discoveredStreams.values()).sort((a, b) => b.lastSeen.localeCompare(a.lastSeen));
+  }
+
+  function createPageBrief(snapshot) {
+    const joined = snapshot.textBlocks.join(' ');
+    const words = joined ? joined.split(/\s+/).filter(Boolean).length : 0;
+    const readingMinutes = Math.max(1, Math.ceil(words / 225));
+    const hostCounts = snapshot.links.reduce((acc, link) => {
+      try { acc[new URL(link.href).hostname] = (acc[new URL(link.href).hostname] || 0) + 1; } catch { /* ignore */ }
+      return acc;
+    }, {});
+    const topHosts = Object.entries(hostCounts).sort((a, b) => b[1] - a[1]).slice(0, 8).map(([host, count]) => ({ host, count }));
+    return { words, readingMinutes, topHosts, title: snapshot.title, url: snapshot.url };
   }
 
   function extractMeta() {
@@ -372,7 +451,8 @@
       mime = 'text/csv';
       extension = 'csv';
       content = toCsv(snapshot.links.map((link) => ({ kind: 'link', text: link.text, url: link.href }))
-        .concat(snapshot.images.map((image) => ({ kind: 'image', text: image.alt || image.title, url: image.src }))));
+        .concat(snapshot.images.map((image) => ({ kind: 'image', text: image.alt || image.title, url: image.src })))
+        .concat(snapshot.streams.map((stream) => ({ kind: stream.type, text: stream.sources.join(' + '), url: stream.url }))));
     }
     const blob = new Blob([content], { type: `${mime};charset=utf-8` });
     const url = URL.createObjectURL(blob);
@@ -387,6 +467,8 @@
   function toMarkdown(snapshot) {
     const lines = [`# ${snapshot.title}`, '', `- URL: ${snapshot.url}`, `- Captured: ${snapshot.capturedAt}`, '', '## Counts'];
     Object.entries(snapshot.counts).forEach(([key, value]) => lines.push(`- ${key}: ${value}`));
+    lines.push('', '## Page brief', `- Words: ${snapshot.pageBrief.words || 0}`, `- Reading time: ${snapshot.pageBrief.readingMinutes || 0} minute(s)`);
+    lines.push('', '## Stream Radar', ...snapshot.streams.slice(0, 100).map((stream) => `- ${stream.type} (${stream.sources.join(', ')}): ${stream.url}`));
     lines.push('', '## Headings', ...snapshot.headings.map((h) => `${'#'.repeat(Number(h.level[1]) + 1)} ${h.text}`));
     lines.push('', '## Text excerpts', ...snapshot.textBlocks.slice(0, 25).map((text) => `- ${text}`));
     lines.push('', '## Links', ...snapshot.links.slice(0, 100).map((link) => `- [${link.text || link.href}](${link.href})`));
@@ -487,9 +569,10 @@
             <button data-action="selection">Selection Assist</button>
             <button data-action="ocr">OCR Visible Images</button>
             <button data-action="copy">Copy JSON</button>
+            <button data-action="copyStreams">Copy Streams</button>
             <select data-action="export"><option value="">Export...</option><option value="json">JSON</option><option value="csv">Links + Images CSV</option><option value="markdown">Markdown</option></select>
           </div>
-          <section class="aera-card"><strong>Ethics guardrail</strong><span>Only collect data you are allowed to inspect. This build does not bypass paywalls, authentication, DRM, or hidden form protections.</span></section>
+          <section class="aera-card"><strong>Ethics guardrail</strong><span>Only collect data you are allowed to inspect. Stream Radar finds visible/network-advertised media URLs for audit and lawful archiving; it does not decrypt DRM or bypass access controls.</span></section>
           <section id="${APP_ID}-data"></section>
           <details><summary>Options</summary><div id="${APP_ID}-options" class="aera-card"></div></details>
           <details><summary>OCR Output</summary><pre id="${APP_ID}-ocr">OCR has not run.</pre></details>
@@ -514,6 +597,7 @@
     if (action === 'selection') enableSelectionAssist();
     if (action === 'ocr') performOcr();
     if (action === 'copy') exportSnapshot('clipboard');
+    if (action === 'copyStreams') copyStreams();
     if (action === 'toggleCompact') toggleCompact();
     if (action === 'close') document.getElementById(APP_ID)?.remove();
   }
@@ -532,6 +616,7 @@
     renderOptions();
     if (key === 'theme') document.getElementById(APP_ID)?.classList.toggle('light', state.settings.theme === 'light');
     if (key === 'compactMode') document.getElementById(APP_ID)?.classList.toggle('compact', state.settings.compactMode);
+    if (key === 'networkSniffer') installStreamSniffer();
     scanPage(`option: ${key}`);
   }
 
@@ -545,6 +630,9 @@
       ['includeHiddenMetadata', 'Include extra metadata tags'],
       ['redactSensitive', 'Redact emails, phones, long numbers'],
       ['compactMode', 'Compact mode'],
+      ['streamRadar', 'Stream Radar media intelligence'],
+      ['networkSniffer', 'Network manifest sniffer'],
+      ['includePerformanceEntries', 'Scan browser performance entries'],
     ];
     options.innerHTML = `${rows.map(([key, label]) => `<div class="aera-row"><label>${escapeHtml(label)}<input type="checkbox" data-setting="${key}" ${state.settings[key] ? 'checked' : ''}></label></div>`).join('')}
       <div class="aera-row"><label>Theme<select data-setting="theme"><option value="dark" ${state.settings.theme === 'dark' ? 'selected' : ''}>Dark/system</option><option value="light" ${state.settings.theme === 'light' ? 'selected' : ''}>Light</option></select></label></div>`;
@@ -558,6 +646,8 @@
       <div class="aera-counts">
         ${Object.entries(snapshot.counts).map(([key, value]) => `<div class="aera-card"><strong>${value}</strong><span>${escapeHtml(key)}</span></div>`).join('')}
       </div>
+      ${details('Page brief', JSON.stringify(snapshot.pageBrief, null, 2))}
+      ${details('Stream Radar', snapshot.streams.slice(0, 50).map((stream) => `${stream.type} • ${stream.sources.join(', ')}\n${stream.url}${stream.context && Object.keys(stream.context).length ? `\n${JSON.stringify(stream.context)}` : ''}`).join('\n\n'))}
       ${details('Headings', snapshot.headings.slice(0, 25).map((h) => `${h.level}: ${h.text}`).join('\n'))}
       ${details('Text excerpts', snapshot.textBlocks.slice(0, 20).join('\n\n'))}
       ${details('Images', snapshot.images.slice(0, 25).map((img) => `${img.alt || '(no alt)'}\n${img.src}\n${img.naturalWidth}×${img.naturalHeight} natural, ${img.displayedWidth}×${img.displayedHeight} shown`).join('\n\n'))}
@@ -572,6 +662,15 @@
 
   function details(title, content) {
     return `<details><summary>${escapeHtml(title)}</summary><pre>${escapeHtml(content || 'None found.')}</pre></details>`;
+  }
+
+  function copyStreams() {
+    const streams = state.latest.streams || [];
+    if (!streams.length) {
+      log('warn', 'No stream URLs have been detected yet.');
+      return;
+    }
+    copyToClipboard(streams.map((stream) => `${stream.type}	${stream.url}`).join('\n'), 'stream URL list');
   }
 
   function renderLogs() {
@@ -608,6 +707,57 @@
     handle.addEventListener('pointerup', () => { start = null; });
   }
 
+  function installStreamSniffer() {
+    if (!state.settings.networkSniffer) return;
+    if (!state.fetchPatched && typeof window.fetch === 'function') {
+      const nativeFetch = window.fetch.bind(window);
+      window.fetch = async (...args) => {
+        const requestUrl = typeof args[0] === 'string' ? args[0] : args[0]?.url;
+        rememberStream(requestUrl, 'fetch:request');
+        const response = await nativeFetch(...args);
+        rememberStream(response.url, 'fetch:response', { contentType: response.headers.get('content-type') || '' });
+        const contentType = response.headers.get('content-type') || '';
+        if (/mpegurl|vnd\.apple\.mpegurl|dash\+xml/i.test(contentType) || STREAM_URL_RE.test(response.url)) {
+          response.clone().text().then((text) => {
+            const summary = summarizeM3u8(text);
+            rememberStream(response.url, 'fetch:manifest', summary);
+            scheduleScan('stream manifest');
+          }).catch(() => {});
+        }
+        return response;
+      };
+      state.fetchPatched = true;
+    }
+    if (!state.xhrPatched && window.XMLHttpRequest) {
+      const nativeOpen = XMLHttpRequest.prototype.open;
+      XMLHttpRequest.prototype.open = function patchedOpen(method, url, ...rest) {
+        this.__aeraUrl = url;
+        rememberStream(url, 'xhr:request');
+        this.addEventListener('load', () => {
+          rememberStream(this.responseURL || this.__aeraUrl, 'xhr:response', { status: this.status });
+          if (STREAM_URL_RE.test(this.responseURL || this.__aeraUrl || '') && typeof this.responseText === 'string') {
+            rememberStream(this.responseURL || this.__aeraUrl, 'xhr:manifest', summarizeM3u8(this.responseText));
+            scheduleScan('xhr stream manifest');
+          }
+        });
+        return nativeOpen.call(this, method, url, ...rest);
+      };
+      state.xhrPatched = true;
+    }
+    if (!state.responseTextPatched && window.Response?.prototype?.text) {
+      const nativeText = Response.prototype.text;
+      Response.prototype.text = function patchedText() {
+        return nativeText.call(this).then((text) => {
+          findUrlLikeValues(text).forEach((url) => rememberStream(url, 'response:text'));
+          if (/^#EXTM3U/m.test(text)) rememberStream(this.url, 'response:m3u8-body', summarizeM3u8(text));
+          return text;
+        });
+      };
+      state.responseTextPatched = true;
+    }
+    log('info', 'Stream Radar network sniffer initialized.');
+  }
+
   const scheduleScan = (() => {
     let timeout;
     return (reason) => {
@@ -634,6 +784,7 @@
       window.addEventListener('DOMContentLoaded', init, { once: true });
       return;
     }
+    installStreamSniffer();
     createSidebar();
     observeDomChanges();
     scanPage('initial');
