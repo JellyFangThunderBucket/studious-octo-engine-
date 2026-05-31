@@ -1,0 +1,45 @@
+{
+  "name": "codex-chrome-chromebook",
+  "version": "0.1.0",
+  "description": "Chromebook-focused Chrome automation guidance and helpers for Codex.",
+  "author": {
+    "name": "[TODO: Author Name]",
+    "email": "[TODO: author@example.com]",
+    "url": "[TODO: https://github.com/author]"
+  },
+  "homepage": "https://github.com/local/codex-chrome-chromebook",
+  "repository": "https://github.com/local/codex-chrome-chromebook",
+  "license": "MIT",
+  "keywords": [
+    "chromebook",
+    "chrome",
+    "codex",
+    "devtools",
+    "crostini"
+  ],
+  "skills": "./skills/",
+  "interface": {
+    "displayName": "Codex Chrome Chromebook",
+    "shortDescription": "Use Chrome with Codex on Chromebook Linux.",
+    "longDescription": "Guides Codex through Chromebook Chrome automation, including Crostini diagnostics, dedicated Chrome/Chromium launch with remote debugging, and safe DevTools endpoint usage.",
+    "developerName": "[TODO: Developer Name]",
+    "category": "Productivity",
+    "capabilities": [
+      "Browser automation guidance",
+      "Diagnostics",
+      "DevTools workflow"
+    ],
+    "websiteURL": "https://github.com/local/codex-chrome-chromebook",
+    "privacyPolicyURL": "[TODO: Privacy Policy URL]",
+    "termsOfServiceURL": "[TODO: Terms of Service URL]",
+    "defaultPrompt": [
+      "Check Chrome automation readiness on my Chromebook.",
+      "Start Chrome debugging for this web app.",
+      "Use Chrome DevTools to inspect localhost."
+    ],
+    "brandColor": "#38BDF8",
+    "composerIcon": "./assets/icon.svg",
+    "logo": "./assets/icon.svg",
+    "screenshots": []
+  }
+}
