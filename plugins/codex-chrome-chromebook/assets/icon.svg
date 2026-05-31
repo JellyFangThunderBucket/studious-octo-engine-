@@ -1,0 +1,7 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 128 128" role="img" aria-label="Codex Chrome Chromebook">
+  <rect width="128" height="128" rx="28" fill="#0f172a"/>
+  <circle cx="64" cy="64" r="42" fill="#38bdf8" opacity="0.95"/>
+  <circle cx="64" cy="64" r="22" fill="#0f172a"/>
+  <path d="M34 84h60v10H34zM44 34h40l10 18H34z" fill="#f8fafc"/>
+  <path d="M50 58h28v12H50z" fill="#f8fafc"/>
+</svg>
