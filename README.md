@@ -45,3 +45,8 @@ Install `advanced-ethical-data-tool.user.js` in Tampermonkey or another compatib
 - **Safer defaults** keep redaction enabled and keep the tool focused on visible or browser-advertised resources rather than bypassing access controls.
 
 This userscript is intentionally consent-first: it does not bypass paywalls, authentication, DRM, or hidden form protections. Use it only on pages you are allowed to inspect or archive.
+
+## No Middle Man userscript
+
+Install `no-middle-man.user.js` in Tampermonkey, Violentmonkey, or another compatible userscript manager to modernize the classic “No Middle Man” redirect remover. The 2026 refresh keeps the original goal—turning redirect/tracking links into direct destination links—while using current userscript metadata, safer URL parsing, repeated percent-decoding for chained redirects, support for protocol-relative and bare `www.` destinations, and a `MutationObserver` so links added after page load are cleaned too.
+
