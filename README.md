@@ -50,3 +50,9 @@ This userscript is intentionally consent-first: it does not bypass paywalls, aut
 
 Install `no-middle-man.user.js` in Tampermonkey, Violentmonkey, or another compatible userscript manager to modernize the classic “No Middle Man” redirect remover. The 2026 refresh keeps the original goal—turning redirect/tracking links into direct destination links—while using current userscript metadata, safer URL parsing, repeated percent-decoding for chained redirects, support for protocol-relative and bare `www.` destinations, and a `MutationObserver` so links added after page load are cleaned too.
 
+## Facebook Debug Info Helper 2026 userscript
+
+Install `facebook-debug-info-2026.user.js` in Tampermonkey to modernize the older one-off Facebook console snippet. The helper exposes `getFacebookDebugInfo2026(flag)` and a backwards-compatible `getDebugInfo(flag)` alias, supports current Facebook URL shapes such as numeric posts, `pfbid` posts, `story.php`, `permalink.php`, videos, reels, groups, and mobile/web hosts, and reports profile/post candidates from the rendered page, URL, anchors, metadata, and JSON-like script data.
+
+The 2026 version is consent-first: it only inspects data already present in the current rendered page, does not call private APIs, does not bypass login or privacy controls, and can copy a JSON report through a Tampermonkey menu command. Supported flags include `ALL`, `PROFILEID`, `POSTID`, `POSTPFBID`, `COMBINE`, `JSON`, and `COPY`.
+
