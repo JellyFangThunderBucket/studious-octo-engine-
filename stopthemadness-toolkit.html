@@ -1,0 +1,100 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>StopTheMadness Safari Extension Toolkit</title>
+<style>
+  :root{color-scheme:light dark;--bg:#f8f8fb;--fg:#111;--card:#fff;--accent:#2457ff;--muted:#666;--code:#f1f3f7;--border:#d8dbe3}
+  @media (prefers-color-scheme:dark){:root{--bg:#111318;--fg:#f5f5f7;--card:#1b1e25;--muted:#a8adba;--code:#101217;--border:#343946}}
+  body{margin:0;padding:24px;font:16px/1.5 -apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;background:var(--bg);color:var(--fg)}
+  main{max-width:980px;margin:auto} h1,h2,h3{line-height:1.15} h1{font-size:clamp(2rem,5vw,4rem)}
+  .card{background:var(--card);border:1px solid var(--border);border-radius:18px;padding:18px;margin:18px 0;box-shadow:0 2px 16px #0001}
+  .grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(280px,1fr));gap:16px}.muted{color:var(--muted)}
+  pre{overflow:auto;background:var(--code);border:1px solid var(--border);border-radius:14px;padding:14px;white-space:pre-wrap} code{font-family:ui-monospace,SFMono-Regular,Menlo,monospace;font-size:.92em}
+  button.copy{border:0;border-radius:999px;background:var(--accent);color:white;padding:10px 14px;font-weight:700} .pill{display:inline-block;border:1px solid var(--border);border-radius:999px;padding:3px 9px;margin:2px;color:var(--muted)}
+</style>
+</head>
+<body>
+<main>
+<h1>StopTheMadness Safari Extension Toolkit</h1>
+<p class="muted">Open this page in Safari, then copy the snippets into StopTheMadness Pro. Use the CSS blocks in <strong>Custom CSS</strong>, the JavaScript blocks in <strong>JavaScript snippets</strong> for manual actions, or in <strong>Custom JavaScript</strong> for automatic page-load behavior.</p>
+<section class="card"><h2>How to use</h2><ol><li>In StopTheMadness, open the website options for a domain or leave defaults selected.</li><li>Paste one CSS block into <strong>Custom CSS</strong>.</li><li>Add JavaScript snippets one at a time in <strong>JavaScript snippets</strong>; enable “Run snippet only in the top frame” for snippets that change the whole page.</li><li>Keep aggressive snippets domain-specific so they do not break login, checkout, banking, or editor pages.</li></ol></section>
+<section class="card"><h2>Custom CSS blocks</h2><article><h3>Reader-ish cleanup</h3><p class="muted">Hides sticky bars, cookie prompts, newsletter overlays, and common ad containers.</p><button class="copy" data-copy="css-cleanup">Copy CSS</button><pre id="css-cleanup"><code>/* General calmer web: use per-site if a page breaks. */
+:where([class*="cookie" i],[id*="cookie" i],[class*="newsletter" i],[id*="newsletter" i],[class*="subscribe" i],[id*="subscribe" i],[class*="modal" i],[id*="modal" i],[class*="paywall" i],[id*="paywall" i],[aria-modal="true"]) {
+  display: none !important;
+}
+:where([class*="sticky" i],[id*="sticky" i],[class*="floating" i],[id*="floating" i],.ad,.ads,[class*=" ad-" i],[class^="ad-" i],[id^="ad-" i],[class*="sponsor" i]) {
+  display: none !important;
+}
+html, body { overflow: auto !important; }</code></pre></article><article><h3>Readable typography</h3><button class="copy" data-copy="css-readable">Copy CSS</button><pre id="css-readable"><code>/* Larger, calmer article text. */
+:where(article, main, [role="main"]) {
+  max-width: 72ch !important;
+  margin-inline: auto !important;
+  line-height: 1.65 !important;
+}
+:where(article, main, [role="main"]) :where(p, li) {
+  font-size: clamp(18px, 2.4vw, 21px) !important;
+}
+pre, code { font-size: 16px !important; white-space: pre-wrap !important; }</code></pre></article><article><h3>Force visible focus and selection</h3><button class="copy" data-copy="css-focus">Copy CSS</button><pre id="css-focus"><code>* { -webkit-user-select: text !important; user-select: text !important; }
+:focus-visible { outline: 3px solid #0a84ff !important; outline-offset: 3px !important; }
+::selection { background: #ffd60a !important; color: #000 !important; }</code></pre></article><article><h3>Disable most motion</h3><button class="copy" data-copy="css-motion">Copy CSS</button><pre id="css-motion"><code>*, *::before, *::after {
+  animation-duration: 0.001s !important;
+  animation-iteration-count: 1 !important;
+  transition-duration: 0.001s !important;
+  scroll-behavior: auto !important;
+}</code></pre></article></section>
+<section class="card"><h2>JavaScript snippets</h2><div class="grid"><article><h3>Remove overlays and unlock scroll</h3><button class="copy" data-copy="js-overlays">Copy JS</button><pre id="js-overlays"><code>(() => {
+  const selectors = ['[aria-modal="true"]','[role="dialog"]','[class*="modal" i]','[id*="modal" i]','[class*="overlay" i]','[id*="overlay" i]','[class*="cookie" i]','[id*="cookie" i]','[class*="newsletter" i]','[id*="newsletter" i]'];
+  document.querySelectorAll(selectors.join(',')).forEach(el => el.remove());
+  document.documentElement.style.overflow = 'auto';
+  document.body.style.overflow = 'auto';
+})();</code></pre></article><article><h3>Show all hidden images</h3><button class="copy" data-copy="js-images">Copy JS</button><pre id="js-images"><code>(() => {
+  document.querySelectorAll('img').forEach(img => {
+    for (const attr of ['data-src','data-original','data-lazy-src','data-url','data-image']) {
+      if (!img.src && img.getAttribute(attr)) img.src = img.getAttribute(attr);
+    }
+    img.loading = 'eager';
+    img.decoding = 'auto';
+    img.style.visibility = 'visible';
+    img.style.opacity = '1';
+  });
+})();</code></pre></article><article><h3>Copy clean page link</h3><button class="copy" data-copy="js-cleanlink">Copy JS</button><pre id="js-cleanlink"><code>(() => {
+  const url = new URL(location.href);
+  [...url.searchParams.keys()].forEach(k => {
+    if (/^(utm_|fbclid$|gclid$|msclkid$|mc_|igshid$|ref$|spm$)/i.test(k)) url.searchParams.delete(k);
+  });
+  navigator.clipboard.writeText(url.toString());
+})();</code></pre></article><article><h3>Toggle editable page text</h3><button class="copy" data-copy="js-edit">Copy JS</button><pre id="js-edit"><code>(() => {
+  document.designMode = document.designMode === 'on' ? 'off' : 'on';
+  alert(`Page editing is now ${document.designMode}. Reload to discard edits.`);
+})();</code></pre></article><article><h3>Expand details and collapsed content</h3><button class="copy" data-copy="js-expand">Copy JS</button><pre id="js-expand"><code>(() => {
+  document.querySelectorAll('details').forEach(d => d.open = true);
+  document.querySelectorAll('[aria-expanded="false"]').forEach(el => el.setAttribute('aria-expanded','true'));
+  document.querySelectorAll('[hidden], [style*="display: none"]').forEach(el => {
+    el.hidden = false;
+    el.style.display = 'block';
+  });
+})();</code></pre></article><article><h3>Make videos usable</h3><button class="copy" data-copy="js-video">Copy JS</button><pre id="js-video"><code>(() => {
+  document.querySelectorAll('video,audio').forEach(media => {
+    media.controls = true;
+    media.muted = false;
+    media.playbackRate = 1;
+    media.removeAttribute('disablepictureinpicture');
+  });
+})();</code></pre></article></div></section>
+<section class="card"><h2>Hidden Elements starter selectors</h2><p class="muted">Add these one at a time under Hidden Elements. Leave Domain blank only if you are sure the selector is safe globally.</p><p><span class="pill">[aria-modal="true"]</span><span class="pill">[class*="cookie" i]</span><span class="pill">[id*="newsletter" i]</span><span class="pill">[class*="paywall" i]</span><span class="pill">[class*="sticky" i]</span><span class="pill">[class*="sponsor" i]</span></p></section>
+</main>
+<script>
+document.addEventListener('click', async event => {
+  const button = event.target.closest('button[data-copy]');
+  if (!button) return;
+  const text = document.getElementById(button.dataset.copy).innerText;
+  await navigator.clipboard.writeText(text);
+  const old = button.textContent;
+  button.textContent = 'Copied';
+  setTimeout(() => button.textContent = old, 1200);
+});
+</script>
+</body>
+</html>
